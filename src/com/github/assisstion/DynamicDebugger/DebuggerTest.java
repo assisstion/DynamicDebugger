@@ -54,7 +54,7 @@ public class DebuggerTest{
 			Thread.sleep(2000);
 			points.set(11);
 			matches.set(3);
-			debugger.attachSupplier(() -> "%$time=" + time);
+			debugger.attachSupplier(Debugger.formatSupplier(() -> "time", () -> time));
 			while(!debugger.isDone()){
 				time++;
 				Thread.sleep(1000);

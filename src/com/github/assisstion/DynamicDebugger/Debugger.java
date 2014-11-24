@@ -67,6 +67,10 @@ public class Debugger<T> implements Closeable{
 		return b;
 	}
 
+	public static Supplier<String> formatSupplier(Supplier<?> key, Supplier<?> value){
+		return () -> "%$" + key.get().toString() + "=" + value.get().toString();
+	}
+
 	public boolean attach(DynamicVariable<? extends T> dynamicVariable){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
