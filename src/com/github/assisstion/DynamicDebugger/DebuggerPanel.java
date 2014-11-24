@@ -1,10 +1,12 @@
 package com.github.assisstion.DynamicDebugger;
 
+import java.awt.BorderLayout;
 import java.awt.EventQueue;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.table.AbstractTableModel;
 
@@ -13,22 +15,30 @@ import com.github.assisstion.DynamicDebugger.Debugger.DebuggerUpdatable;
 class DebuggerPanel extends JPanel implements DebuggerUpdatable{
 
 	protected Map<String, String> values;
+	protected DebuggerTableModel model;
+	JScrollPane scrollPane;
 
 	public DebuggerPanel() {
+		setLayout(new BorderLayout());
 		values = new ConcurrentSkipListMap<String, String>();
-		table = new JTable(new DebuggerTableModel());
-		add(table);
+		model = new DebuggerTableModel();
+		table = new JTable(model);
+		scrollPane = new JScrollPane(table);
+		scrollPane.add(table);
+		add(scrollPane, BorderLayout.CENTER);
 	}
 
 	private static final long serialVersionUID = 623716694098971561L;
 	private JTable table;
 
 	@Override
-	public void update(Map<String, String> table){
+	public void update(Map<String, String> map){
 		values.clear();
-		values.putAll(table);
+		values.putAll(map);
 		EventQueue.invokeLater(() -> {
-			revalidate();
+			model.fireTableDataChanged();
+			scrollPane.setViewportView(table);
+			table.doLayout();
 			repaint();
 		});
 	}
@@ -69,6 +79,16 @@ class DebuggerPanel extends JPanel implements DebuggerUpdatable{
 			throw new ArrayIndexOutOfBoundsException(rowIndex + ", " + columnIndex);
 		}
 
+		@Override
+		public String getColumnName(int columnIndex){
+			if(columnIndex == 0){
+				return "Name";
+			}
+			if(columnIndex == 1){
+				return "Value";
+			}
+			throw new ArrayIndexOutOfBoundsException(columnIndex);
+		}
 
 	}
 }

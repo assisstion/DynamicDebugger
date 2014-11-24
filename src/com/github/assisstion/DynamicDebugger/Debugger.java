@@ -43,6 +43,17 @@ public class Debugger<T> implements Closeable{
 		delay = updateDelay;
 	}
 
+	/*
+	 * Supplier pattern syntax
+	 * If the supplier returns an object with a String representation that begins
+	 * with "%$" and the String representation of the object contains an "=", then
+	 * the String representation is split by its first "=" and the value before becomes
+	 * the key of the map, while the value after becomes the value of the map.
+	 * This only applies for suppliers (and not DynamicVariables, for ease of usage).
+	 * e.g. a value of:
+	 * %$counter=3
+	 * would give the key of "counter" and the value of "3"
+	 */
 	public boolean attachSupplier(Supplier<? extends T> supplier){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
@@ -294,7 +305,23 @@ public class Debugger<T> implements Closeable{
 							map.put(dv.getName(), dv.get().toString());
 						}
 						for(Supplier<? extends T> dv : suppliers){
-							map.put(dv.toString(), dv.get().toString());
+							String key = dv.toString();
+							String value = dv.get().toString();
+
+							if(value.startsWith("%$")){
+								if(value.endsWith("=")){
+									key = value.substring(0, value.length() - 1);
+									value = "";
+								}
+								else{
+									int i = value.indexOf("=");
+									if(i != -1){
+										key = value.substring(2, i);
+										value = value.substring(i+1);
+									}
+								}
+							}
+							map.put(key, value);
 						}
 					}
 					finally{
@@ -313,5 +340,13 @@ public class Debugger<T> implements Closeable{
 
 	protected interface DebuggerUpdatable{
 		void update(Map<String, String> table);
+	}
+
+	public boolean isDone(){
+		return done;
+	}
+
+	public boolean isInit(){
+		return init;
 	}
 }

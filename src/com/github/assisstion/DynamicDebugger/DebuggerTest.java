@@ -11,6 +11,8 @@ import javax.swing.JFrame;
 
 public class DebuggerTest{
 
+	protected static int time = 0;
+
 	private static Debugger<Object> debugger;
 
 	public static void main(String[] args){
@@ -46,12 +48,17 @@ public class DebuggerTest{
 					"matches", 3);
 			debugger.attach(points);
 			debugger.attach(name);
-			Thread.sleep(1000);
+			Thread.sleep(2000);
 			name.set("table tennis");
 			debugger.attach(matches);
-			Thread.sleep(1000);
+			Thread.sleep(2000);
 			points.set(11);
 			matches.set(3);
+			debugger.attachSupplier(() -> "%$time=" + time);
+			while(!debugger.isDone()){
+				time++;
+				Thread.sleep(1000);
+			}
 		}
 		catch(InvocationTargetException
 				| InterruptedException e){
