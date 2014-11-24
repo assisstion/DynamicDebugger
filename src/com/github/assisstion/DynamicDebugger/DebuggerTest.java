@@ -18,6 +18,7 @@ public class DebuggerTest{
 			EventQueue.invokeAndWait(() -> {
 				debugger = new Debugger<Object>();
 				JFrame frame = new JFrame();
+				frame.setTitle("Dynamic Debugger Test");
 				frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 				frame.setBounds(100, 100, 400, 300);
 				frame.addWindowListener(new WindowAdapter(){

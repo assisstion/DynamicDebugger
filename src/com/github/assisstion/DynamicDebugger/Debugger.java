@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -18,6 +20,7 @@ import javax.swing.JPanel;
 
 public class Debugger<T> implements Closeable{
 
+	protected Object doneLock = new Object();
 	protected ReadWriteLock variableLock = new ReentrantReadWriteLock();
 	protected List<Supplier<? extends T>> suppliers;
 	protected List<DynamicVariable<? extends T>> dynamicVariables;
@@ -25,7 +28,8 @@ public class Debugger<T> implements Closeable{
 	protected boolean done = false;
 	protected ReadWriteLock resourceLock = new ReentrantReadWriteLock();
 	protected List<DebuggerUpdatable> updatables;
-	protected boolean init;
+	protected boolean init = false;
+	protected int lastHash = -1;
 
 	public Debugger(){
 		this(10);
@@ -42,24 +46,39 @@ public class Debugger<T> implements Closeable{
 	public boolean attachSupplier(Supplier<? extends T> supplier){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = suppliers.add(supplier);
-		lock.unlock();
+		boolean b;
+		try{
+			b = suppliers.add(supplier);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
 	public boolean attach(DynamicVariable<? extends T> dynamicVariable){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = dynamicVariables.add(dynamicVariable);
-		lock.unlock();
+		boolean b;
+		try{
+			b = dynamicVariables.add(dynamicVariable);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
 	public boolean attachAllSuppliers(Collection<? extends Supplier<? extends T>> supplier){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = suppliers.addAll(supplier);
-		lock.unlock();
+		boolean b;
+		try{
+			b = suppliers.addAll(supplier);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
@@ -67,24 +86,39 @@ public class Debugger<T> implements Closeable{
 			DynamicVariable<? extends T>> dynamicVariable){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = dynamicVariables.addAll(dynamicVariable);
-		lock.unlock();
+		boolean b;
+		try{
+			b = dynamicVariables.addAll(dynamicVariable);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
 	public boolean unattachSupplier(Supplier<? extends T> supplier){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = suppliers.remove(supplier);
-		lock.unlock();
+		boolean b;
+		try{
+			b = suppliers.remove(supplier);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
 	public boolean unattach(DynamicVariable<? extends T> dynamicVariable){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = dynamicVariables.remove(dynamicVariable);
-		lock.unlock();
+		boolean b;
+		try{
+			b = dynamicVariables.remove(dynamicVariable);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
@@ -92,8 +126,13 @@ public class Debugger<T> implements Closeable{
 			Supplier<? extends T>> supplier){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = suppliers.removeAll(supplier);
-		lock.unlock();
+		boolean b;
+		try{
+			b = suppliers.removeAll(supplier);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
@@ -101,28 +140,45 @@ public class Debugger<T> implements Closeable{
 			? extends T>> dynamicVariable){
 		Lock lock = variableLock.writeLock();
 		lock.lock();
-		boolean b = dynamicVariables.removeAll(dynamicVariable);
-		lock.unlock();
+		boolean b;
+		try{
+			b = dynamicVariables.removeAll(dynamicVariable);
+		}
+		finally{
+			lock.unlock();
+		}
 		return b;
 	}
 
 	public void clearVariables(){
 		Lock lock = variableLock.writeLock();
-		dynamicVariables.clear();
-		lock.unlock();
+		try{
+			dynamicVariables.clear();
+		}
+		finally{
+			lock.unlock();
+		}
 	}
 
 	public void clearSuppliers(){
 		Lock lock = variableLock.writeLock();
-		suppliers.clear();
-		lock.unlock();
+		try{
+			suppliers.clear();
+		}
+		finally{
+			lock.unlock();
+		}
 	}
 
 	public void clear(){
 		Lock lock = variableLock.writeLock();
-		clearVariables();
-		clearSuppliers();
-		lock.unlock();
+		try{
+			clearVariables();
+			clearSuppliers();
+		}
+		finally{
+			lock.unlock();
+		}
 	}
 
 	public synchronized JPanel init(){
@@ -140,34 +196,77 @@ public class Debugger<T> implements Closeable{
 	public void close() throws IOException{
 		Lock writeLock = resourceLock.writeLock();
 		writeLock.lock();
-		done = true;
-		writeLock.unlock();
+		try{
+			done = true;
+			synchronized(doneLock){
+				doneLock.notifyAll();
+			}
+		}
+		finally{
+			writeLock.unlock();
+		}
 	}
 
 	protected class DebuggerUpdater implements Runnable{
 
+		protected Timer timer;
+
 		@Override
 		public void run(){
-			while(!done){
-				Lock readLock = resourceLock.readLock();
-				if(!readLock.tryLock()){
-					break;
-				}
-				try{
-					synchronized(updatables){
-						ExecutorService executor = DynamicVariableHolder.getExecutor();
-						for(DebuggerUpdatable updater : updatables){
-							executor.execute(this.new
-									DebuggerUpdateDispatcher(updater));
-						}
+			timer = new Timer();
+			timer.scheduleAtFixedRate(new DebugUpdaterTask(), 0, 100);
+			synchronized(doneLock){
+				while(!done){
+					try{
+						doneLock.wait();
 					}
-					Thread.sleep(10);
+					catch(InterruptedException e){
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
-				catch(InterruptedException e){
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+			}
+			timer.cancel();
+		}
+
+		protected class DebugUpdaterTask extends TimerTask{
+
+			@Override
+			public void run(){
+				Lock vrLock = variableLock.readLock();
+				vrLock.lock();
+				try{
+					//lazy hash code checking
+
+					//can fail to update in case of collisions
+					int supplierHash = 0;
+					for(Supplier<? extends T> supplier : suppliers){
+						T t = supplier.get();
+						supplierHash = 31*supplierHash + (t == null ? 0 : t.hashCode());
+					}
+					int varHash = 0;
+					for(DynamicVariable<? extends T> var : dynamicVariables){
+						T t = var.get();
+						varHash = 31*varHash + (t == null ? 0 : t.hashCode());
+					}
+					int hash = varHash ^ supplierHash;
+					if(hash == lastHash){
+						return;
+					}
+					else{
+						lastHash = hash;
+					}
 				}
-				readLock.unlock();
+				finally{
+					vrLock.unlock();
+				}
+				synchronized(updatables){
+					ExecutorService executor = DynamicVariableHolder.getExecutor();
+					for(DebuggerUpdatable updater : updatables){
+						executor.execute(DebuggerUpdater.this.new
+								DebuggerUpdateDispatcher(updater));
+					}
+				}
 			}
 		}
 
@@ -183,20 +282,29 @@ public class Debugger<T> implements Closeable{
 			public void run(){
 				Lock readLock = resourceLock.readLock();
 				if(!readLock.tryLock()){
+					timer.cancel();
 					return;
 				}
-				Map<String, String> map = new HashMap<String, String>();
-				Lock vrLock = variableLock.readLock();
-				vrLock.lock();
-				for(DynamicVariable<? extends T> dv : dynamicVariables){
-					map.put(dv.getName(), dv.get().toString());
+				try{
+					Map<String, String> map = new HashMap<String, String>();
+					Lock vrLock = variableLock.readLock();
+					vrLock.lock();
+					try{
+						for(DynamicVariable<? extends T> dv : dynamicVariables){
+							map.put(dv.getName(), dv.get().toString());
+						}
+						for(Supplier<? extends T> dv : suppliers){
+							map.put(dv.toString(), dv.get().toString());
+						}
+					}
+					finally{
+						vrLock.unlock();
+					}
+					updatable.update(map);
 				}
-				for(Supplier<? extends T> dv : suppliers){
-					map.put(dv.toString(), dv.get().toString());
+				finally{
+					readLock.unlock();
 				}
-				vrLock.unlock();
-				updatable.update(map);
-				readLock.unlock();
 			}
 
 		}
