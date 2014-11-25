@@ -32,7 +32,7 @@ public class Debugger<T> implements Closeable{
 	protected int lastHash = -1;
 
 	public Debugger(){
-		this(10);
+		this(100);
 	}
 
 	//In milliseconds
@@ -229,7 +229,7 @@ public class Debugger<T> implements Closeable{
 		@Override
 		public void run(){
 			timer = new Timer();
-			timer.scheduleAtFixedRate(new DebugUpdaterTask(), 0, 100);
+			timer.scheduleAtFixedRate(new DebugUpdaterTask(), 0, delay);
 			synchronized(doneLock){
 				while(!done){
 					try{
