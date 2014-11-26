@@ -1,5 +1,8 @@
 package com.github.assisstion.DynamicDebugger;
 
+import java.awt.BorderLayout;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collection;
@@ -16,9 +19,10 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 
+import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-public class Debugger<T> implements Closeable{
+public class Debugger<T> implements Closeable, DebugInformationReceiver{
 
 	protected Object doneLock = new Object();
 	protected ReadWriteLock variableLock = new ReentrantReadWriteLock();
@@ -202,9 +206,34 @@ public class Debugger<T> implements Closeable{
 		}
 		init = true;
 		new Thread(this.new DebuggerUpdater()).start();
-		DebuggerPanel panel = new DebuggerPanel();
+		DebuggerPanel panel = new DebuggerPanel(this);
 		updatables.add(panel);
 		return panel;
+	}
+
+	public static <T> Debugger<T> getDebugger(){
+		Debugger<T> debugger = new Debugger<T>();
+		JFrame frame = new JFrame();
+		frame.setTitle("Dynamic Debugger Test");
+		frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+		frame.setBounds(100, 100, 400, 300);
+		frame.addWindowListener(new WindowAdapter(){
+			@Override
+			public void windowClosed(WindowEvent e){
+				try{
+					debugger.close();
+					System.exit(0);
+				}
+				catch(IOException e1){
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		});
+		frame.setLayout(new BorderLayout());
+		frame.add(debugger.init(), BorderLayout.CENTER);
+		frame.setVisible(true);
+		return debugger;
 	}
 
 	@Override
@@ -248,6 +277,12 @@ public class Debugger<T> implements Closeable{
 
 			@Override
 			public void run(){
+				if(updateLast){
+					updateLast = false;
+				}
+				else if(!update){
+					return;
+				}
 				Lock vrLock = variableLock.readLock();
 				vrLock.lock();
 				try{
@@ -344,6 +379,7 @@ public class Debugger<T> implements Closeable{
 
 	protected interface DebuggerUpdatable{
 		void update(Map<String, String> table);
+		void setExecutionState(String state);
 	}
 
 	public boolean isDone(){
@@ -353,4 +389,104 @@ public class Debugger<T> implements Closeable{
 	public boolean isInit(){
 		return init;
 	}
+
+	protected Object pauseLock = new Object();
+	protected volatile boolean paused = false;
+	protected volatile boolean held = false;
+	protected volatile boolean update = true;
+	protected volatile boolean updateLast = false;
+	protected volatile int skips = 0;
+	protected volatile boolean skipForever = false;
+
+	//False if the pause has been skipped, true otherwise;
+	//If hold, stop updating
+	public boolean pause(boolean hold){
+		synchronized(pauseLock){
+			if(skipForever){
+				return false;
+			}
+			if(skips > 0){
+				skips--;
+				return false;
+			}
+			paused = true;
+			if(hold){
+				held = true;
+				update = false;
+				updateLast = true;
+			}
+			synchronized(updatables){
+				for(DebuggerUpdatable du : updatables){
+					du.setExecutionState("Paused");
+				}
+			}
+			while(paused){
+				try{
+					pauseLock.wait();
+				}
+				catch(InterruptedException e){
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+			return true;
+		}
+	}
+
+	public void setUpdate(boolean update){
+		synchronized(pauseLock){
+			this.update = update;
+			if(held && update){
+				held = false;
+			}
+		}
+	}
+
+	public void resume(){
+		synchronized(pauseLock){
+			paused = false;
+			pauseLock.notifyAll();
+			if(held){
+				update = true;
+				held = false;
+			}
+			synchronized(updatables){
+				for(DebuggerUpdatable du : updatables){
+					du.setExecutionState("Running");
+				}
+			}
+		}
+	}
+
+	public boolean isPaused(){
+		return paused;
+	}
+
+	@Override
+	public void resumeExecution(int count){
+		synchronized(pauseLock){
+			if(count < 0){
+				skipForever = true;
+				skips = 0;
+			}
+			else{
+				skipForever = false;
+				skips += count;
+			}
+			if(isPaused()){
+				resume();
+			}
+		}
+	}
+
+	//Returns -1 on skipping forever
+	@Override
+	public int getSkipCount(){
+		return skipForever ? -1 : skips;
+	}
+}
+
+interface DebugInformationReceiver{
+	void resumeExecution(int count);
+	int getSkipCount();
 }

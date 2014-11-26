@@ -12,6 +12,7 @@ import javax.swing.JFrame;
 public class DebuggerTest{
 
 	protected static int time = 0;
+	protected static int time2 = 0;
 
 	private static Debugger<Object> debugger;
 
@@ -48,15 +49,30 @@ public class DebuggerTest{
 					"matches", 3);
 			debugger.attach(points);
 			debugger.attach(name);
+			debugger.pause(true);
 			Thread.sleep(2000);
 			name.set("table tennis");
 			debugger.attach(matches);
+			debugger.pause(true);
 			Thread.sleep(2000);
 			points.set(11);
 			matches.set(3);
 			debugger.attachSupplier(Debugger.formatSupplier(() -> "time", () -> time));
+			debugger.attachSupplier(Debugger.formatSupplier(() -> "time2", () -> time2));
+			new Thread(() -> {
+				while(!debugger.isDone()){
+					time2++;
+					try{
+						Thread.sleep(1000);
+					}
+					catch(InterruptedException e){
+						e.printStackTrace();
+					}
+				}
+			}).start();
 			while(!debugger.isDone()){
 				time++;
+				debugger.pause(true);
 				Thread.sleep(1000);
 			}
 		}
