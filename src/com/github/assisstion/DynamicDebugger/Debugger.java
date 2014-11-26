@@ -222,6 +222,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 			public void windowClosed(WindowEvent e){
 				try{
 					debugger.close();
+					System.exit(0);
 				}
 				catch(IOException e1){
 					// TODO Auto-generated catch block
