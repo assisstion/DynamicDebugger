@@ -3,6 +3,7 @@ package com.github.assisstion.DynamicDebugger;
 import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collection;
@@ -212,6 +213,15 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 	}
 
 	public static <T> Debugger<T> getDebugger(){
+		return getDebugger(new WindowAdapter(){
+			@Override
+			public void windowClosed(WindowEvent e){
+				System.exit(0);
+			}
+		});
+	}
+
+	public static <T> Debugger<T> getDebugger(WindowListener closeListener){
 		Debugger<T> debugger = new Debugger<T>();
 		JFrame frame = new JFrame();
 		frame.setTitle("Dynamic Debugger Test");
@@ -222,7 +232,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 			public void windowClosed(WindowEvent e){
 				try{
 					debugger.close();
-					System.exit(0);
+					closeListener.windowClosed(e);
 				}
 				catch(IOException e1){
 					// TODO Auto-generated catch block
