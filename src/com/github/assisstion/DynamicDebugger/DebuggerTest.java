@@ -51,11 +51,11 @@ public class DebuggerTest{
 					"matches", 3);
 			debugger.attach(points);
 			debugger.attach(name);
-			debugger.pause(true);
+			debugger.pause(true, true);
 			Thread.sleep(2000);
 			name.set("table tennis");
 			debugger.attach(matches);
-			debugger.pause(true);
+			debugger.pause(true, true);
 			Thread.sleep(2000);
 			points.set(11);
 			matches.set(3);
@@ -74,7 +74,7 @@ public class DebuggerTest{
 			}).start();
 			while(!debugger.isDone()){
 				time.set(time.get() + 1);
-				debugger.pause(true);
+				debugger.pause(true, true);
 				Thread.sleep(1000);
 			}
 		}

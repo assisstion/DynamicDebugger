@@ -38,6 +38,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 	protected Set<DebuggerUpdatable> updatables;
 	protected boolean init = false;
 	protected int lastHash = -1;
+	protected Map<DynamicVariable<? extends T>, T> holdCache;
 
 	public Debugger(){
 		this(100);
@@ -48,6 +49,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 		suppliers = new HashSet<Supplier<? extends T>>();
 		dynamicVariables = new HashSet<DynamicVariable<? extends T>>();
 		updatables = Collections.synchronizedSet(new HashSet<DebuggerUpdatable>());
+		holdCache = Collections.synchronizedMap(new HashMap<DynamicVariable<? extends T>, T>());
 		delay = updateDelay;
 	}
 
@@ -415,14 +417,28 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 	protected Object pauseLock = new Object();
 	protected volatile boolean paused = false;
 	protected volatile boolean held = false;
+	protected volatile boolean cached = false;
 	protected volatile boolean update = true;
 	protected volatile boolean updateLast = false;
 	protected volatile int skips = 0;
 	protected volatile boolean skipForever = false;
 
+	public boolean pause(){
+		return pause(true);
+	}
+
+	public boolean pause(boolean hold){
+		return pause(hold, hold);
+	}
+
 	//False if the pause has been skipped, true otherwise;
 	//If hold, stop updating
-	public boolean pause(boolean hold){
+	//If cache, apply changes upon resuming
+	public boolean pause(boolean hold, boolean cache){
+		if(cache && !hold){
+			throw new IllegalArgumentException(
+					"cache cannot be true while hold is false");
+		}
 		synchronized(pauseLock){
 			if(skipForever){
 				return false;
@@ -434,6 +450,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 			paused = true;
 			if(hold){
 				held = true;
+				cached = cache;
 				update = false;
 				updateLast = true;
 			}
@@ -460,6 +477,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 			this.update = update;
 			if(held && update){
 				held = false;
+				cached = false;
 			}
 		}
 	}
@@ -471,6 +489,16 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 			if(held){
 				update = true;
 				held = false;
+				if(cached){
+					synchronized(holdCache){
+						for(Map.Entry<DynamicVariable<? extends T>, T> entry :
+							holdCache.entrySet()){
+							fireUpdate(entry.getKey(), entry.getValue());
+						}
+					}
+					holdCache.clear();
+					cached = false;
+				}
 			}
 			synchronized(updatables){
 				for(DebuggerUpdatable du : updatables){
@@ -516,6 +544,9 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 	protected void fireUpdate(DynamicVariable<? extends T> source, T newValue){
 		//Depends on updateLast to be updated by traditional updating methods
 		if(!updateLast && !update){
+			if(cached){
+				holdCache.put(source, newValue);
+			}
 			return;
 		}
 		synchronized(updatables){
