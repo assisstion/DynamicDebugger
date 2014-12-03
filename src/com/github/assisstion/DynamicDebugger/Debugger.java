@@ -10,10 +10,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
@@ -29,12 +30,12 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 
 	protected Object doneLock = new Object();
 	protected ReadWriteLock variableLock = new ReentrantReadWriteLock();
-	protected List<Supplier<? extends T>> suppliers;
-	protected List<DynamicVariable<? extends T>> dynamicVariables;
+	protected Set<Supplier<? extends T>> suppliers;
+	protected Set<DynamicVariable<? extends T>> dynamicVariables;
 	protected long delay;
 	protected boolean done = false;
 	protected ReadWriteLock resourceLock = new ReentrantReadWriteLock();
-	protected List<DebuggerUpdatable> updatables;
+	protected Set<DebuggerUpdatable> updatables;
 	protected boolean init = false;
 	protected int lastHash = -1;
 
@@ -44,9 +45,9 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver, Variabl
 
 	//In milliseconds
 	public Debugger(long updateDelay){
-		suppliers = new LinkedList<Supplier<? extends T>>();
-		dynamicVariables = new LinkedList<DynamicVariable<? extends T>>();
-		updatables = Collections.synchronizedList(new LinkedList<DebuggerUpdatable>());
+		suppliers = new HashSet<Supplier<? extends T>>();
+		dynamicVariables = new HashSet<DynamicVariable<? extends T>>();
+		updatables = Collections.synchronizedSet(new HashSet<DebuggerUpdatable>());
 		delay = updateDelay;
 	}
 

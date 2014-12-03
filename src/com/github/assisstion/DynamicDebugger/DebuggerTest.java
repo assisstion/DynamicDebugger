@@ -74,7 +74,7 @@ public class DebuggerTest{
 			}).start();
 			while(!debugger.isDone()){
 				time.set(time.get() + 1);
-				debugger.pause(false);
+				debugger.pause(true);
 				Thread.sleep(1000);
 			}
 		}
