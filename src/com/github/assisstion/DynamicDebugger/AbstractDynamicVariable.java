@@ -45,13 +45,13 @@ public abstract class AbstractDynamicVariable<T> implements DynamicVariable<T>{
 		synchronized(listeners){
 			ExecutorService es = getExecutor();
 			for(VariableListener<? super T> vl : listeners){
-				es.execute(new ListenerExecutionRunnable<T>(vl,
+				es.execute(this.new ListenerExecutionRunnable(vl,
 						oldValue, newValue, timeStamp));
 			}
 		}
 	}
 
-	protected static class ListenerExecutionRunnable<T> implements Runnable{
+	protected class ListenerExecutionRunnable implements Runnable{
 
 		protected VariableListener<? super T> vl;
 		protected T oldValue;
@@ -68,7 +68,8 @@ public abstract class AbstractDynamicVariable<T> implements DynamicVariable<T>{
 
 		@Override
 		public void run(){
-			vl.changeOccured(oldValue, newValue, timeStamp);
+			vl.changeOccured(new VariableChangeEvent<T>(
+					oldValue, newValue, timeStamp, AbstractDynamicVariable.this));
 		}
 
 	}

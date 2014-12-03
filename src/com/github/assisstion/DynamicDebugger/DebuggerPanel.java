@@ -5,7 +5,9 @@ import java.awt.EventQueue;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -20,6 +22,8 @@ import com.github.assisstion.DynamicDebugger.Debugger.DebuggerUpdatable;
 class DebuggerPanel extends JPanel implements DebuggerUpdatable{
 
 	protected DebugInformationReceiver dir;
+	protected Object tableLock;
+	protected Set<String> supplierKeys;
 	protected Map<String, String> values;
 	protected DebuggerTableModel model;
 	protected JScrollPane scrollPane;
@@ -27,7 +31,9 @@ class DebuggerPanel extends JPanel implements DebuggerUpdatable{
 	public DebuggerPanel(DebugInformationReceiver dir) {
 		this.dir = dir;
 		setLayout(new BorderLayout());
+		tableLock = new Object();
 		values = new ConcurrentSkipListMap<String, String>();
+		supplierKeys = new ConcurrentSkipListSet<String>();
 		model = new DebuggerTableModel();
 		table = new JTable(model);
 		scrollPane = new JScrollPane(table);
@@ -88,8 +94,27 @@ class DebuggerPanel extends JPanel implements DebuggerUpdatable{
 
 	@Override
 	public void update(Map<String, String> map){
-		values.clear();
-		values.putAll(map);
+		synchronized(tableLock){
+			supplierKeys.forEach((s) -> values.remove(s));
+			values.putAll(map);
+			refreshTable();
+		}
+	}
+
+	@Override
+	public void push(String key, String value){
+		synchronized(tableLock){
+			if(value == null){
+				values.remove(key);
+			}
+			else{
+				values.put(key, value);
+			}
+			refreshTable();
+		}
+	}
+
+	protected void refreshTable(){
 		EventQueue.invokeLater(() -> {
 			model.fireTableDataChanged();
 			scrollPane.setViewportView(table);

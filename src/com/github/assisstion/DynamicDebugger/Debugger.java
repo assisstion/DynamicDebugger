@@ -6,12 +6,14 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
@@ -23,7 +25,7 @@ import java.util.function.Supplier;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-public class Debugger<T> implements Closeable, DebugInformationReceiver{
+public class Debugger<T> implements Closeable, DebugInformationReceiver, VariableListener<T>{
 
 	protected Object doneLock = new Object();
 	protected ReadWriteLock variableLock = new ReentrantReadWriteLock();
@@ -82,6 +84,10 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 		boolean b;
 		try{
 			b = dynamicVariables.add(dynamicVariable);
+			if(b){
+				dynamicVariable.addChangeListener(this);
+				this.fireUpdate(dynamicVariable, dynamicVariable.get());
+			}
 		}
 		finally{
 			lock.unlock();
@@ -108,7 +114,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 		lock.lock();
 		boolean b;
 		try{
-			b = dynamicVariables.addAll(dynamicVariable);
+			b = dynamicVariable.stream().map(dv -> attach(dv)).allMatch(bx -> bx);
 		}
 		finally{
 			lock.unlock();
@@ -135,6 +141,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 		boolean b;
 		try{
 			b = dynamicVariables.remove(dynamicVariable);
+			dynamicVariable.removeChangeListener(this);
 		}
 		finally{
 			lock.unlock();
@@ -162,7 +169,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 		lock.lock();
 		boolean b;
 		try{
-			b = dynamicVariables.removeAll(dynamicVariable);
+			b = dynamicVariable.stream().map(dv -> unattach(dv)).allMatch(bx -> bx);
 		}
 		finally{
 			lock.unlock();
@@ -173,7 +180,9 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 	public void clearVariables(){
 		Lock lock = variableLock.writeLock();
 		try{
-			dynamicVariables.clear();
+			List<? extends DynamicVariable<? extends T>> dvclone = new
+					ArrayList<DynamicVariable<? extends T>>(dynamicVariables);
+			dvclone.forEach((dv) -> unattach(dv));
 		}
 		finally{
 			lock.unlock();
@@ -268,7 +277,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 		@Override
 		public void run(){
 			timer = new Timer();
-			timer.scheduleAtFixedRate(new DebugUpdaterTask(), 0, delay);
+			timer.schedule(new DebugUpdaterTask(), 0, delay);
 			synchronized(doneLock){
 				while(!done){
 					try{
@@ -304,12 +313,13 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 						T t = supplier.get();
 						supplierHash = 31*supplierHash + (t == null ? 0 : t.hashCode());
 					}
-					int varHash = 0;
-					for(DynamicVariable<? extends T> var : dynamicVariables){
-						T t = var.get();
-						varHash = 31*varHash + (t == null ? 0 : t.hashCode());
-					}
-					int hash = varHash ^ supplierHash;
+					//int varHash = 0;
+					//for(DynamicVariable<? extends T> var : dynamicVariables){
+					//	T t = var.get();
+					//	varHash = 31*varHash + (t == null ? 0 : t.hashCode());
+					//}
+					int hash = supplierHash;
+					//int hash = varHash ^ supplierHash;
 					if(hash == lastHash){
 						return;
 					}
@@ -350,9 +360,9 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 					Lock vrLock = variableLock.readLock();
 					vrLock.lock();
 					try{
-						for(DynamicVariable<? extends T> dv : dynamicVariables){
-							map.put(dv.getName(), dv.get().toString());
-						}
+						//for(DynamicVariable<? extends T> dv : dynamicVariables){
+						//	map.put(dv.getName(), dv.get().toString());
+						//}
 						for(Supplier<? extends T> dv : suppliers){
 							String key = dv.toString();
 							String value = dv.get().toString();
@@ -389,6 +399,7 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 
 	protected interface DebuggerUpdatable{
 		void update(Map<String, String> table);
+		void push(String key, String value);
 		void setExecutionState(String state);
 	}
 
@@ -493,6 +504,60 @@ public class Debugger<T> implements Closeable, DebugInformationReceiver{
 	@Override
 	public int getSkipCount(){
 		return skipForever ? -1 : skips;
+	}
+
+	@Override
+	public void changeOccured(VariableChangeEvent<? extends T> e){
+		Objects.requireNonNull(e);
+		fireUpdate(e.getSource(), e.getNewValue());
+	}
+
+	protected void fireUpdate(DynamicVariable<? extends T> source, T newValue){
+		//Depends on updateLast to be updated by traditional updating methods
+		if(!updateLast && !update){
+			return;
+		}
+		synchronized(updatables){
+			ExecutorService executor = DynamicVariableHolder.getExecutor();
+			String key;
+			String value;
+			if(newValue == null){
+				value = "null";
+			}
+			else{
+				value = newValue.toString();
+			}
+			String sourceName = source.getName();
+			if(source == null || sourceName == null){
+				if(value.startsWith("%$")){
+					if(value.endsWith("=")){
+						key = value.substring(0, value.length() - 1);
+						value = "";
+					}
+					else{
+						int i = value.indexOf("=");
+						if(i != -1){
+							key = value.substring(2, i);
+							value = value.substring(i+1);
+						}
+						else{
+							key = "null";
+						}
+					}
+				}
+				else{
+					key = "null";
+				}
+			}
+			else{
+				key = sourceName;
+			}
+			String finalValue = value;
+			for(DebuggerUpdatable updater : updatables){
+				executor.execute(() -> updater.push(
+						key, finalValue));
+			}
+		}
 	}
 }
 

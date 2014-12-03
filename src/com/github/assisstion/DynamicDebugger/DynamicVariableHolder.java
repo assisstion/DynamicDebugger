@@ -1,7 +1,8 @@
 package com.github.assisstion.DynamicDebugger;
 
 
-public class DynamicVariableHolder<T> extends AbstractDynamicVariable<T>{
+public class DynamicVariableHolder<T> extends AbstractDynamicVariable<T>
+implements MutableDynamicVariable<T>{
 
 	protected T value;
 
@@ -22,6 +23,7 @@ public class DynamicVariableHolder<T> extends AbstractDynamicVariable<T>{
 		value = t;
 	}
 
+	@Override
 	public synchronized void set(T t){
 		long time = System.currentTimeMillis();
 		T old = value;
@@ -32,6 +34,10 @@ public class DynamicVariableHolder<T> extends AbstractDynamicVariable<T>{
 	@Override
 	public synchronized T get(){
 		return value;
+	}
+
+	public static <T> DynamicVariableHolder<T> valueOf(String name, T t){
+		return new DynamicVariableHolder<T>(name, t);
 	}
 
 }

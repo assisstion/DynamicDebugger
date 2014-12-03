@@ -11,8 +11,10 @@ import javax.swing.JFrame;
 
 public class DebuggerTest{
 
-	protected static int time = 0;
-	protected static int time2 = 0;
+	protected static MutableDynamicVariable<Integer> time =
+			new DynamicVariableHolder<Integer>("time", 0);
+	protected static MutableDynamicVariable<Integer> time2 =
+			new DynamicVariableHolder<Integer>("time2", 0);
 
 	private static Debugger<Object> debugger;
 
@@ -57,11 +59,11 @@ public class DebuggerTest{
 			Thread.sleep(2000);
 			points.set(11);
 			matches.set(3);
-			debugger.attachSupplier(Debugger.formatSupplier(() -> "time", () -> time));
-			debugger.attachSupplier(Debugger.formatSupplier(() -> "time2", () -> time2));
+			debugger.attach(time);
+			debugger.attach(time2);
 			new Thread(() -> {
 				while(!debugger.isDone()){
-					time2++;
+					time2.set(time2.get() + 1);
 					try{
 						Thread.sleep(1000);
 					}
@@ -71,8 +73,8 @@ public class DebuggerTest{
 				}
 			}).start();
 			while(!debugger.isDone()){
-				time++;
-				debugger.pause(true);
+				time.set(time.get() + 1);
+				debugger.pause(false);
 				Thread.sleep(1000);
 			}
 		}
